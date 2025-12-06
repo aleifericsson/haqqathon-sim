@@ -58,10 +58,11 @@ class LED(tk.Canvas):
 class LCD:
     def __init__(self, parent, lines=5, on_color="#151a14", off_color="#67a155", line_height_px=20):
         self.lines_count = lines
-        self.mode = "off" #off, select, sent, map
+        self.mode = "off" #off, select, sent, compass
         self.line_height_px = line_height_px
         self.height_px = lines * line_height_px
         self.width_px = self.height_px * 2  # 2:1 aspect ratio
+        self.safezone_angle = 45 
 
         # Colors for "on" and "off" pixels / text
         self.on_color = on_color
@@ -76,7 +77,7 @@ class LCD:
             "Report Illness",
             "Rep. Road Damage",
             "Rep. Low Resources",
-            "See Map"
+            "See Compass"
         ]
 
         # LCD frame and canvas
@@ -139,6 +140,21 @@ class LCD:
     def turn_off(self):
         self.mode = "off"
         self.update_display()
+    
+    def send(self):
+        if self.selected < 4:
+            self.mode = "sent"
+            self.update_display()
+        elif self.selected == 4:
+            self.mode = "compass"
+            self.update_display()
+    
+    def get_mode(self):
+        return self.mode
+    
+    def select(self):
+        self.mode = "select"
+        self.update_display()
 
     def update_display(self):
         """Refresh the canvas to show current text and selected line."""
@@ -188,6 +204,74 @@ class LCD:
                 fill=self.off_color,
                 outline=""
             )
+        elif self.mode == "sent":
+            self.canvas.delete("all")
+            self.canvas.create_rectangle(
+                0, 0, self.width_px, self.height_px,
+                fill=self.off_color,
+                outline=""
+            )
+            y = 0 * self.line_height_px + self.line_height_px // 2
+            item = self.canvas.create_text(
+                5, y,
+                anchor="w",
+                text="Sent!",
+                font=("Courier", 13),
+                fill=self.on_color
+            )
+            self.canvas.itemconfig(item)
+        elif self.mode == "compass":
+            self.canvas.delete("all")
+
+            # Fill background
+            self.canvas.create_rectangle(
+                0, 0, self.width_px, self.height_px,
+                fill=self.off_color,
+                outline=""
+            )
+
+            cx = self.width_px // 2
+            cy = self.height_px // 2
+            radius = min(self.width_px, self.height_px) // 3
+
+            # --- Helper to compute endpoint from angle ---
+            def endpoint(angle_deg):
+                import math
+                rad = math.radians(angle_deg)
+                x = cx + radius * math.sin(rad)
+                y = cy - radius * math.cos(rad)
+                return x, y
+
+            # --- North arrow (always straight up) ---
+            nx, ny = endpoint(0)          # 0° = North
+            self.canvas.create_line(
+                cx, cy, nx, ny,
+                fill=self.on_color,
+                width=3
+            )
+            self.canvas.create_text(
+                nx, ny - 10,
+                text="N",
+                fill=self.on_color,
+                font=("Courier", 12)
+            )
+
+            # --- Safe zone direction arrow ---
+            sx, sy = endpoint(self.safezone_angle)
+            self.canvas.create_line(
+                cx, cy, sx, sy,
+                fill=self.on_color,
+                width=3
+            )
+            self.canvas.create_text(
+                sx, sy - 10,
+                text="Z",
+                fill=self.on_color,
+                font=("Courier", 12)
+            )
+
+            return
+
 
 def simulate_events():
     if system_on:
@@ -294,15 +378,18 @@ def confirm():
         transmit()
 
 def transmit():
-    led_trans.set_color("#6359f0")
+    if system_on:
+        led_trans.set_color("#6359f0")
+        lcd.send()
 
-    for i in range(12):
-        root.after(400 * i, lambda: led_trans.set_color("#6359f0"))
-        root.after(400 * i + 200, lambda: led_trans.set_color("#2b2761"))
+        for i in range(12):
+            root.after(400 * i, lambda: led_trans.set_color("#6359f0"))
+            root.after(400 * i + 200, lambda: led_trans.set_color("#2b2761"))
 
 def cancel():
     if system_on:
-        pass
+        if lcd.mode == "sent" or lcd.mode == "compass":
+            lcd.select()
 
 def seek_down():
     if system_on:
